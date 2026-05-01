@@ -4,6 +4,7 @@ import ResultForm from "./components/ResultForm";
 import ResultsTable from "./components/ResultsTable";
 import RankingsTable from "./components/RankingsTable";
 import MissingDobFixer from "./components/MissingDobFixer";
+import HytekImportSection from "./components/HytekImportSection";
 import {
   createResult,
   deleteResult as deleteResultById,
@@ -242,6 +243,13 @@ function App() {
       {message && <p><b>Status:</b> {message}</p>}
 
       <ResultsTable results={results} onEdit={startEdit} onDelete={deleteResult} />
+
+      <HytekImportSection
+        onImportSuccess={async () => {
+          await loadLookups();
+          await loadResults();
+        }}
+      />
 
       <div style={{ marginTop: 24 }}>
         <h2>Rankings</h2>

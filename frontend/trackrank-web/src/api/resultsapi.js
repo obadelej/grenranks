@@ -106,3 +106,22 @@ export async function updateAthleteDob(id, dateOfBirth) {
   await parseResponse(response, "Failed to update athlete DOB");
   return response.json();
 }
+
+export async function fetchImportHistory(take = 10) {
+  const response = await fetch(
+    `${API_BASE}/api/imports/history?take=${encodeURIComponent(String(take))}`,
+  );
+  await parseResponse(response, "Failed to load import history");
+  return response.json();
+}
+
+export async function importHytekCsv(file) {
+  const formData = new FormData();
+  formData.append("File", file);
+  const response = await fetch(`${API_BASE}/api/imports/hytek`, {
+    method: "POST",
+    body: formData,
+  });
+  await parseResponse(response, "Hy-Tek import failed");
+  return response.json();
+}
