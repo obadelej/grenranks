@@ -1,11 +1,11 @@
 FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build
 WORKDIR /src
 
-COPY ["backend/TrackRank.Api/TrackRank.Api.csproj", "backend/TrackRank.Api/"]
-RUN dotnet restore "backend/TrackRank.Api/TrackRank.Api.csproj"
+COPY ["TrackRank.Api.csproj", "./"]
+RUN dotnet restore "TrackRank.Api.csproj"
 
 COPY . .
-RUN dotnet publish "backend/TrackRank.Api/TrackRank.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "TrackRank.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:7.0 AS final
 WORKDIR /app
