@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TrackRank.Api.Data;
+using TrackRank.Api.Services;
 
 namespace TrackRank.Api.Controllers;
 
@@ -129,6 +130,7 @@ public class RankingsController : ControllerBase
         {
             EventId = eventInfo.Id,
             EventName = eventInfo.Name,
+            EventDisplayName = EventNameFormatter.ToDisplayName(eventInfo.Name),
             EventType = eventInfo.EventType,
             Gender = gender,
             Category = normalizedCategory,

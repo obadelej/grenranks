@@ -1,3 +1,5 @@
+import { toEventDisplayName } from "../utils/eventNames";
+
 function RankingsTable({ rankingsData }) {
   if (!rankingsData) {
     return null;
@@ -8,7 +10,7 @@ function RankingsTable({ rankingsData }) {
   return (
     <div style={{ marginTop: 24 }}>
       <h2>
-        Rankings - {rankingsData.eventName} ({rankingsData.eventType})
+        Rankings - {rankingsData.eventDisplayName || toEventDisplayName(rankingsData.eventName)} ({rankingsData.eventType})
       </h2>
       <p>
         Filter: {rankingsData.gender} / {rankingsData.category}

@@ -1,3 +1,5 @@
+import { toEventDisplayName } from "../utils/eventNames";
+
 function ResultsTable({ results, onEdit, onDelete }) {
   return (
     <>
@@ -21,7 +23,7 @@ function ResultsTable({ results, onEdit, onDelete }) {
               <td>{r.id}</td>
               <td>{r.athleteName}</td>
               <td>{r.meetName}</td>
-              <td>{r.eventName}</td>
+              <td>{r.eventDisplayName || toEventDisplayName(r.eventName)}</td>
               <td>{r.performance}</td>
               <td>{r.wind ?? "-"}</td>
               <td>{new Date(r.resultDate).toLocaleDateString()}</td>

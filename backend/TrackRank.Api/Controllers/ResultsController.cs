@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TrackRank.Api.Controllers.Dtos;
 using TrackRank.Api.Data;
 using TrackRank.Api.Models;
+using TrackRank.Api.Services;
 
 namespace TrackRank.Api.Controllers;
 
@@ -30,6 +31,7 @@ public class ResultsController : ControllerBase
                 MeetName = r.Meet.Name,
                 r.EventId,
                 EventName = r.Event.Name,
+                EventDisplayName = EventNameFormatter.ToDisplayName(r.Event.Name),
                 r.Performance,
                 r.Wind,
                 r.ResultDate,
@@ -56,6 +58,7 @@ public class ResultsController : ControllerBase
                 MeetName = r.Meet.Name,
                 r.EventId,
                 EventName = r.Event.Name,
+                EventDisplayName = EventNameFormatter.ToDisplayName(r.Event.Name),
                 r.Performance,
                 r.Wind,
                 r.ResultDate,
@@ -111,6 +114,7 @@ public class ResultsController : ControllerBase
                 MeetName = r.Meet.Name,
                 r.EventId,
                 EventName = r.Event.Name,
+                EventDisplayName = EventNameFormatter.ToDisplayName(r.Event.Name),
                 r.Performance,
                 r.Wind,
                 r.ResultDate,
@@ -165,6 +169,7 @@ public class ResultsController : ControllerBase
                 MeetName = r.Meet.Name,
                 r.EventId,
                 EventName = r.Event.Name,
+                EventDisplayName = EventNameFormatter.ToDisplayName(r.Event.Name),
                 r.Performance,
                 r.Wind,
                 r.ResultDate,
