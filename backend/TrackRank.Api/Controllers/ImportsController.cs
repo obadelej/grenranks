@@ -234,14 +234,23 @@ public class ImportsController : ControllerBase
     }
 
     [HttpGet("history")]
-    public async Task<IActionResult> GetHistory([FromQuery] int take = 25, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> GetHistory(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken cancellationToken = default)
     {
-        if (take <= 0 || take > 200)
-            return BadRequest("take must be between 1 and 200.");
+        if (page <= 0)
+            return BadRequest("page must be greater than 0.");
+        if (pageSize <= 0 || pageSize > 200)
+            return BadRequest("pageSize must be between 1 and 200.");
 
-        var history = await _db.ImportHistories
-            .OrderByDescending(x => x.ImportedAtUtc)
-            .Take(take)
+        var query = _db.ImportHistories
+            .OrderByDescending(x => x.ImportedAtUtc);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(x => new
             {
                 x.Id,
@@ -257,7 +266,13 @@ public class ImportsController : ControllerBase
             })
             .ToListAsync(cancellationToken);
 
-        return Ok(history);
+        return Ok(new
+        {
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount,
+            Items = items
+        });
     }
 
     private bool IsDevelopmentOrTestingEnvironment() =>

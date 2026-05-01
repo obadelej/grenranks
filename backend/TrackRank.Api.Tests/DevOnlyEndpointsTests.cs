@@ -73,7 +73,7 @@ public class DevOnlyEndpointsTests
         await using var factory = new WebAppFactory("Production");
         var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/api/imports/history?take=5");
+        var response = await client.GetAsync("/api/imports/history?page=1&pageSize=5");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }

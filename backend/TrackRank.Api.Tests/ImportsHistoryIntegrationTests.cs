@@ -12,33 +12,37 @@ namespace TrackRank.Api.Tests;
 public class ImportsHistoryIntegrationTests
 {
     [Fact]
-    public async Task GetHistory_EmptyDatabase_ReturnsEmptyArray()
+    public async Task GetHistory_EmptyDatabase_ReturnsPagedResponseWithEmptyItems()
     {
         await using var factory = new WebAppFactory();
         var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/api/imports/history?take=10");
+        var response = await client.GetAsync("/api/imports/history?page=1&pageSize=10");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(json);
-        Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
-        Assert.Equal(0, doc.RootElement.GetArrayLength());
+        Assert.Equal(JsonValueKind.Object, doc.RootElement.ValueKind);
+        Assert.Equal(0, doc.RootElement.GetProperty("totalCount").GetInt32());
+        Assert.Equal(0, doc.RootElement.GetProperty("items").GetArrayLength());
     }
 
     [Theory]
-    [InlineData(0)]
-    [InlineData(201)]
-    public async Task GetHistory_InvalidTake_ReturnsBadRequest(int take)
+    [InlineData(0, 10)]
+    [InlineData(1, 0)]
+    [InlineData(1, 201)]
+    public async Task GetHistory_InvalidPaging_ReturnsBadRequest(int page, int pageSize)
     {
         await using var factory = new WebAppFactory();
         var client = factory.CreateClient();
 
-        var response = await client.GetAsync($"/api/imports/history?take={take}");
+        var response = await client.GetAsync($"/api/imports/history?page={page}&pageSize={pageSize}");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("take must be between 1 and 200", body, StringComparison.OrdinalIgnoreCase);
+        Assert.True(
+            body.Contains("page must be greater than 0", StringComparison.OrdinalIgnoreCase) ||
+            body.Contains("pageSize must be between 1 and 200", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -55,11 +59,11 @@ public class ImportsHistoryIntegrationTests
         var postResponse = await client.PostAsync("/api/imports/hytek", form);
         Assert.Equal(HttpStatusCode.OK, postResponse.StatusCode);
 
-        var getResponse = await client.GetAsync("/api/imports/history?take=5");
+        var getResponse = await client.GetAsync("/api/imports/history?page=1&pageSize=5");
         Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
 
         using var doc = JsonDocument.Parse(await getResponse.Content.ReadAsStringAsync());
-        var arr = doc.RootElement;
+        var arr = doc.RootElement.GetProperty("items");
         Assert.Equal(1, arr.GetArrayLength());
         var row = arr[0];
         Assert.Equal("smoke.csv", row.GetProperty("fileName").GetString());
@@ -89,13 +93,14 @@ public class ImportsHistoryIntegrationTests
         }
 
         var client = factory.CreateClient();
-        var response = await client.GetAsync("/api/imports/history?take=1");
+        var response = await client.GetAsync("/api/imports/history?page=1&pageSize=1");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(1, doc.RootElement.GetArrayLength());
-        Assert.Equal("seed.csv", doc.RootElement[0].GetProperty("fileName").GetString());
-        Assert.Equal(4, doc.RootElement[0].GetProperty("trackParsedCount").GetInt32());
-        Assert.Equal(6, doc.RootElement[0].GetProperty("fieldParseCount").GetInt32());
+        var items = doc.RootElement.GetProperty("items");
+        Assert.Equal(1, items.GetArrayLength());
+        Assert.Equal("seed.csv", items[0].GetProperty("fileName").GetString());
+        Assert.Equal(4, items[0].GetProperty("trackParsedCount").GetInt32());
+        Assert.Equal(6, items[0].GetProperty("fieldParseCount").GetInt32());
     }
 }

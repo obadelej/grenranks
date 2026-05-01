@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchImportHistory, importHytekCsv } from "../api/resultsapi";
+import {
+  readImportHistoryPageFromUrl,
+  writeImportHistoryPageToUrl,
+} from "../utils/urlSync";
 
 function formatUtc(iso) {
   if (!iso) return "";
@@ -11,19 +15,26 @@ function formatUtc(iso) {
 }
 
 export default function HytekImportSection({ onImportSuccess }) {
+  const pageSize = 10;
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [history, setHistory] = useState([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotalCount, setHistoryTotalCount] = useState(0);
   const formRef = useRef(null);
 
-  const loadHistory = useCallback(async () => {
+  const loadHistory = useCallback(async (page = 1) => {
     setHistoryLoading(true);
     setMessage("");
     try {
-      const rows = await fetchImportHistory(15);
-      setHistory(Array.isArray(rows) ? rows : []);
+      const data = await fetchImportHistory({ page, pageSize });
+      setHistory(Array.isArray(data.items) ? data.items : []);
+      setHistoryTotalCount(data.totalCount ?? 0);
+      const nextPage = data.page ?? page;
+      setHistoryPage(nextPage);
+      writeImportHistoryPageToUrl(nextPage);
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -32,7 +43,15 @@ export default function HytekImportSection({ onImportSuccess }) {
   }, []);
 
   useEffect(() => {
-    loadHistory();
+    const initialPage = readImportHistoryPageFromUrl();
+    void loadHistory(initialPage);
+
+    function onPopState() {
+      const page = readImportHistoryPageFromUrl();
+      void loadHistory(page);
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
   }, [loadHistory]);
 
   async function onSubmit(e) {
@@ -55,7 +74,7 @@ export default function HytekImportSection({ onImportSuccess }) {
       setMessage(
         `Import finished: ${summary.importedCount ?? 0} new, ${summary.skippedCount ?? 0} skipped, ${summary.errorCount ?? 0} errors (parsed ${summary.parsedRows ?? 0} rows).`,
       );
-      await loadHistory();
+      await loadHistory(1);
       if (typeof onImportSuccess === "function") {
         onImportSuccess(summary);
       }
@@ -85,7 +104,7 @@ export default function HytekImportSection({ onImportSuccess }) {
         </button>
         <button
           type="button"
-          onClick={loadHistory}
+          onClick={() => loadHistory(historyPage)}
           disabled={historyLoading}
           style={{ marginLeft: 8 }}
         >
@@ -137,6 +156,26 @@ export default function HytekImportSection({ onImportSuccess }) {
           </table>
         </div>
       )}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+        <button
+          type="button"
+          onClick={() => loadHistory(historyPage - 1)}
+          disabled={historyPage <= 1}
+        >
+          Previous
+        </button>
+        <span>
+          Page {historyPage} of {Math.max(1, Math.ceil(historyTotalCount / pageSize))}
+        </span>
+        <button
+          type="button"
+          onClick={() => loadHistory(historyPage + 1)}
+          disabled={historyPage >= Math.ceil(historyTotalCount / pageSize)}
+        >
+          Next
+        </button>
+        <span style={{ color: "#555" }}>Total imports: {historyTotalCount}</span>
+      </div>
     </section>
   );
 }

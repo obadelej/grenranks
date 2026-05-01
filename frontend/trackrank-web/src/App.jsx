@@ -16,6 +16,7 @@ import {
   updateAthleteDob,
   updateResult,
 } from "./api/resultsapi";
+import { readResultsUrlState, writeResultsUrlState } from "./utils/urlSync";
 
 const initialForm = {
   athleteId: "",
@@ -29,10 +30,29 @@ const initialForm = {
 const rankingCategories = ["U7", "U9", "U11", "U13", "U15", "U17", "U20", "20 Plus"];
 const rankingGenders = ["Male", "Female"];
 const rankingYears = ["", "2026", "2025", "2024", "2023", "2022", "2021", "2020"];
+const resultSortOptions = [
+  { value: "resultDate", label: "Result Date" },
+  { value: "performance", label: "Performance" },
+  { value: "createdAtUtc", label: "Created At" },
+  { value: "athleteName", label: "Athlete Name" },
+  { value: "eventName", label: "Event Name" },
+];
+const sourceTypeOptions = ["", "Manual", "HytekImport"];
 
 function App() {
   const [form, setForm] = useState(initialForm);
   const [results, setResults] = useState([]);
+  const [resultsPage, setResultsPage] = useState(1);
+  const [resultsPageSize] = useState(25);
+  const [resultsTotalCount, setResultsTotalCount] = useState(0);
+  const [resultsFilters, setResultsFilters] = useState({
+    athleteId: "",
+    eventId: "",
+    year: "",
+    sourceType: "",
+    sortBy: "resultDate",
+    sortDir: "desc",
+  });
   const [athletes, setAthletes] = useState([]);
   const [meets, setMeets] = useState([]);
   const [events, setEvents] = useState([]);
@@ -69,23 +89,61 @@ function App() {
     }
   }
 
-  async function loadResults() {
+  async function loadResults(page = resultsPage, filters = resultsFilters) {
     try {
-      const data = await fetchResults();
-      setResults(data);
+      const data = await fetchResults({
+        page,
+        pageSize: resultsPageSize,
+        athleteId: filters.athleteId ? Number(filters.athleteId) : undefined,
+        eventId: filters.eventId ? Number(filters.eventId) : undefined,
+        year: filters.year ? Number(filters.year) : undefined,
+        sourceType: filters.sourceType || undefined,
+        sortBy: filters.sortBy,
+        sortDir: filters.sortDir,
+      });
+      setResults(data.items ?? []);
+      setResultsTotalCount(data.totalCount ?? 0);
+      const nextPage = data.page ?? page;
+      setResultsPage(nextPage);
+      writeResultsUrlState({ page: nextPage, filters });
     } catch (err) {
       setMessage(err.message);
     }
   }
 
   useEffect(() => {
-    loadLookups();
-    loadResults();
+    const fromUrl = readResultsUrlState();
+    setResultsFilters(fromUrl.filters);
+    setResultsPage(fromUrl.page);
+
+    async function init() {
+      await loadLookups();
+      await loadResults(fromUrl.page, fromUrl.filters);
+    }
+    void init();
+
+    function onPopState() {
+      const next = readResultsUrlState();
+      setResultsFilters(next.filters);
+      setResultsPage(next.page);
+      void loadResults(next.page, next.filters);
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
   function onChange(e) {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
+  }
+
+  function onResultsFilterChange(e) {
+    const { name, value } = e.target;
+    setResultsFilters((prev) => ({ ...prev, [name]: value }));
+  }
+
+  async function applyResultsFilters() {
+    await loadResults(1, resultsFilters);
   }
 
   function resetForm() {
@@ -103,7 +161,7 @@ function App() {
     try {
       await seedDataApi();
       await loadLookups();
-      await loadResults();
+      await loadResults(resultsPage, resultsFilters);
       setMessage("Seed successful. Dropdown options updated.");
     } catch (err) {
       setMessage(err.message);
@@ -133,7 +191,7 @@ function App() {
 
       setMessage(editingId === null ? "Result saved." : "Result updated.");
       resetForm();
-      await loadResults();
+      await loadResults(resultsPage, resultsFilters);
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -167,7 +225,7 @@ function App() {
       }
 
       setMessage("Result deleted.");
-      await loadResults();
+      await loadResults(resultsPage, resultsFilters);
     } catch (err) {
       setMessage(err.message);
     }
@@ -243,11 +301,68 @@ function App() {
       {message && <p><b>Status:</b> {message}</p>}
 
       <ResultsTable results={results} onEdit={startEdit} onDelete={deleteResult} />
+      <div style={{ marginTop: 10, padding: 10, border: "1px solid #ddd" }}>
+        <b>Results Filters</b>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          <select name="athleteId" value={resultsFilters.athleteId} onChange={onResultsFilterChange}>
+            <option value="">All athletes</option>
+            {athletes.map((a) => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+          <select name="eventId" value={resultsFilters.eventId} onChange={onResultsFilterChange}>
+            <option value="">All events</option>
+            {events.map((ev) => (
+              <option key={ev.id} value={ev.id}>{ev.name}</option>
+            ))}
+          </select>
+          <input
+            name="year"
+            placeholder="Year"
+            value={resultsFilters.year}
+            onChange={onResultsFilterChange}
+            style={{ width: 90 }}
+          />
+          <select name="sourceType" value={resultsFilters.sourceType} onChange={onResultsFilterChange}>
+            {sourceTypeOptions.map((s) => (
+              <option key={s || "all"} value={s}>{s || "All sources"}</option>
+            ))}
+          </select>
+          <select name="sortBy" value={resultsFilters.sortBy} onChange={onResultsFilterChange}>
+            {resultSortOptions.map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
+          <select name="sortDir" value={resultsFilters.sortDir} onChange={onResultsFilterChange}>
+            <option value="desc">Desc</option>
+            <option value="asc">Asc</option>
+          </select>
+          <button onClick={applyResultsFilters}>Apply</button>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+        <button
+          onClick={() => loadResults(resultsPage - 1, resultsFilters)}
+          disabled={resultsPage <= 1}
+        >
+          Previous
+        </button>
+        <span>
+          Page {resultsPage} of {Math.max(1, Math.ceil(resultsTotalCount / resultsPageSize))}
+        </span>
+        <button
+          onClick={() => loadResults(resultsPage + 1, resultsFilters)}
+          disabled={resultsPage >= Math.ceil(resultsTotalCount / resultsPageSize)}
+        >
+          Next
+        </button>
+        <span style={{ color: "#555" }}>Total results: {resultsTotalCount}</span>
+      </div>
 
       <HytekImportSection
         onImportSuccess={async () => {
           await loadLookups();
-          await loadResults();
+          await loadResults(1, resultsFilters);
         }}
       />
 

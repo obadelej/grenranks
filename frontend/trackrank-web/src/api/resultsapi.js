@@ -28,8 +28,27 @@ export async function fetchLookups() {
   return { athletes, meets, events };
 }
 
-export async function fetchResults() {
-  const response = await fetch(`${API_BASE}/api/results`);
+export async function fetchResults({
+  page = 1,
+  pageSize = 25,
+  athleteId,
+  eventId,
+  year,
+  sourceType,
+  sortBy = "resultDate",
+  sortDir = "desc",
+} = {}) {
+  const query = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+    sortBy,
+    sortDir,
+  });
+  if (athleteId) query.set("athleteId", String(athleteId));
+  if (eventId) query.set("eventId", String(eventId));
+  if (year) query.set("year", String(year));
+  if (sourceType) query.set("sourceType", String(sourceType));
+  const response = await fetch(`${API_BASE}/api/results?${query.toString()}`);
   await parseResponse(response, "Failed to load results");
   return response.json();
 }
@@ -107,9 +126,13 @@ export async function updateAthleteDob(id, dateOfBirth) {
   return response.json();
 }
 
-export async function fetchImportHistory(take = 10) {
+export async function fetchImportHistory({ page = 1, pageSize = 10 } = {}) {
+  const query = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  });
   const response = await fetch(
-    `${API_BASE}/api/imports/history?take=${encodeURIComponent(String(take))}`,
+    `${API_BASE}/api/imports/history?${query.toString()}`,
   );
   await parseResponse(response, "Failed to load import history");
   return response.json();

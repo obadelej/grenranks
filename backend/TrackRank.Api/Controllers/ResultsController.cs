@@ -19,9 +19,24 @@ public class ResultsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAll()
+    public async Task<IActionResult> GetAll(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        [FromQuery] int? athleteId = null,
+        [FromQuery] int? eventId = null,
+        [FromQuery] int? year = null,
+        [FromQuery] string? sourceType = null,
+        [FromQuery] string sortBy = "resultDate",
+        [FromQuery] string sortDir = "desc")
     {
-        var results = await _db.Results
+        if (page <= 0)
+            return BadRequest("page must be greater than 0.");
+        if (pageSize <= 0 || pageSize > 200)
+            return BadRequest("pageSize must be between 1 and 200.");
+        if (year.HasValue && (year.Value < 1900 || year.Value > 3000))
+            return BadRequest("year must be between 1900 and 3000.");
+
+        var query = _db.Results
             .Select(r => new
             {
                 r.Id,
@@ -37,11 +52,58 @@ public class ResultsController : ControllerBase
                 r.ResultDate,
                 r.SourceType,
                 r.CreatedAtUtc
-            })
-            .OrderByDescending(r => r.ResultDate)
+            });
+
+        if (athleteId.HasValue)
+            query = query.Where(r => r.AthleteId == athleteId.Value);
+        if (eventId.HasValue)
+            query = query.Where(r => r.EventId == eventId.Value);
+        if (year.HasValue)
+            query = query.Where(r => r.ResultDate.Year == year.Value);
+        if (!string.IsNullOrWhiteSpace(sourceType))
+            query = query.Where(r => r.SourceType.ToLower() == sourceType.Trim().ToLower());
+
+        var normalizedSortBy = sortBy.Trim().ToLowerInvariant();
+        var normalizedSortDir = sortDir.Trim().ToLowerInvariant();
+        var isDesc = normalizedSortDir != "asc";
+        if (normalizedSortDir is not ("asc" or "desc"))
+            return BadRequest("sortDir must be 'asc' or 'desc'.");
+        if (normalizedSortBy is not ("resultdate" or "performance" or "createdatutc" or "athletename" or "eventname"))
+            return BadRequest("sortBy must be one of: resultDate, performance, createdAtUtc, athleteName, eventName.");
+
+        query = normalizedSortBy switch
+        {
+            "resultdate" => isDesc
+                ? query.OrderByDescending(r => r.ResultDate).ThenBy(r => r.Id)
+                : query.OrderBy(r => r.ResultDate).ThenBy(r => r.Id),
+            "performance" => isDesc
+                ? query.OrderByDescending(r => r.Performance).ThenBy(r => r.Id)
+                : query.OrderBy(r => r.Performance).ThenBy(r => r.Id),
+            "createdatutc" => isDesc
+                ? query.OrderByDescending(r => r.CreatedAtUtc).ThenBy(r => r.Id)
+                : query.OrderBy(r => r.CreatedAtUtc).ThenBy(r => r.Id),
+            "athletename" => isDesc
+                ? query.OrderByDescending(r => r.AthleteName).ThenBy(r => r.Id)
+                : query.OrderBy(r => r.AthleteName).ThenBy(r => r.Id),
+            "eventname" => isDesc
+                ? query.OrderByDescending(r => r.EventName).ThenBy(r => r.Id)
+                : query.OrderBy(r => r.EventName).ThenBy(r => r.Id),
+            _ => query
+        };
+
+        var totalCount = await query.CountAsync();
+        var items = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync();
 
-        return Ok(results);
+        return Ok(new
+        {
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount,
+            Items = items
+        });
     }
 
     [HttpGet("{id:int}")]
