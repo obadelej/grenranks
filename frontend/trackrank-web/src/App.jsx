@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import LookupForms from "./components/LookupForms";
 import ResultForm from "./components/ResultForm";
 import ResultsTable from "./components/ResultsTable";
@@ -7,10 +8,16 @@ import MissingDobFixer from "./components/MissingDobFixer";
 import HytekImportSection from "./components/HytekImportSection";
 import {
   createResult,
+  createAthlete,
+  createEvent,
+  createMeet,
   deleteResult as deleteResultById,
   fetchMissingDobAthletes,
   fetchRankings,
   fetchLookups,
+  getStoredAdminKey,
+  loginAsAdmin,
+  logoutAdmin,
   fetchResults,
   seedData as seedDataApi,
   updateAthleteDob,
@@ -67,6 +74,8 @@ function App() {
   const [rankingsLoading, setRankingsLoading] = useState(false);
   const [rankingsData, setRankingsData] = useState(null);
   const [missingDobAthletes, setMissingDobAthletes] = useState([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminKeyInput, setAdminKeyInput] = useState("");
 
   async function loadLookups() {
     try {
@@ -110,6 +119,20 @@ function App() {
       setMessage(err.message);
     }
   }
+
+  useEffect(() => {
+    const storedKey = getStoredAdminKey();
+    if (!storedKey) return;
+    void (async () => {
+      try {
+        await loginAsAdmin(storedKey);
+        setIsAdmin(true);
+      } catch {
+        logoutAdmin();
+        setIsAdmin(false);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     const fromUrl = readResultsUrlState();
@@ -163,6 +186,77 @@ function App() {
       await loadLookups();
       await loadResults(resultsPage, resultsFilters);
       setMessage("Seed successful. Dropdown options updated.");
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
+  async function addAthlete(payload) {
+    setMessage("");
+    try {
+      const normalizedFirst = payload.firstName.trim().toLowerCase();
+      const normalizedLast = payload.lastName.trim().toLowerCase();
+      const duplicateAthlete = athletes.find(
+        (a) =>
+          String(a.firstName || "").trim().toLowerCase() === normalizedFirst &&
+          String(a.lastName || "").trim().toLowerCase() === normalizedLast,
+      );
+      if (duplicateAthlete) {
+        setForm((prev) => ({ ...prev, athleteId: String(duplicateAthlete.id) }));
+        setMessage(
+          `Athlete already exists: ${duplicateAthlete.firstName} ${duplicateAthlete.lastName}. Selected existing athlete.`,
+        );
+        return;
+      }
+
+      const created = await createAthlete(payload);
+      await loadLookups();
+      setForm((prev) => ({ ...prev, athleteId: String(created.id) }));
+      setMessage(`Athlete added: ${created.firstName} ${created.lastName}`);
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
+  async function addMeet(payload) {
+    setMessage("");
+    try {
+      const normalizedMeetName = payload.name.trim().toLowerCase();
+      const duplicateMeet = meets.find(
+        (m) => String(m.name || "").trim().toLowerCase() === normalizedMeetName,
+      );
+      if (duplicateMeet) {
+        setForm((prev) => ({ ...prev, meetId: String(duplicateMeet.id) }));
+        setMessage(`Meet already exists: ${duplicateMeet.name}. Selected existing meet.`);
+        return;
+      }
+
+      const created = await createMeet(payload);
+      await loadLookups();
+      setForm((prev) => ({ ...prev, meetId: String(created.id) }));
+      setMessage(`Meet added: ${created.name}`);
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
+  async function addEvent(payload) {
+    setMessage("");
+    try {
+      const normalizedEventName = payload.name.trim().toLowerCase();
+      const duplicateEvent = events.find(
+        (ev) => String(ev.name || "").trim().toLowerCase() === normalizedEventName,
+      );
+      if (duplicateEvent) {
+        setForm((prev) => ({ ...prev, eventId: String(duplicateEvent.id) }));
+        setMessage(`Event already exists: ${duplicateEvent.name}. Selected existing event.`);
+        return;
+      }
+
+      const created = await createEvent(payload);
+      await loadLookups();
+      setForm((prev) => ({ ...prev, eventId: String(created.id) }));
+      setMessage(`Event added: ${created.name}`);
     } catch (err) {
       setMessage(err.message);
     }
@@ -276,160 +370,242 @@ function App() {
     }
   }
 
+  async function handleAdminLogin(e) {
+    e.preventDefault();
+    setMessage("");
+    try {
+      const result = await loginAsAdmin(adminKeyInput.trim());
+      setIsAdmin(true);
+      setAdminKeyInput("");
+      setMessage(result.warning || "Admin login successful.");
+    } catch (err) {
+      setMessage(err.message);
+      setIsAdmin(false);
+    }
+  }
+
+  function handleAdminLogout() {
+    logoutAdmin();
+    setIsAdmin(false);
+    setAdminKeyInput("");
+    setMessage("Logged out of admin mode.");
+  }
+
   return (
-    <div style={{ maxWidth: 1000, margin: "20px auto", fontFamily: "Arial, sans-serif" }}>
-      <h1>TrackRank - Manual Result Entry</h1>
-
-      <LookupForms
-        seedData={seedData}
-        athletes={athletes}
-        meets={meets}
-        events={events}
-        form={form}
-        onChange={onChange}
-      />
-
-      <ResultForm
-        form={form}
-        onChange={onChange}
-        onSubmit={submitResult}
-        loading={loading}
-        editingId={editingId}
-        onCancelEdit={resetForm}
-      />
-
-      {message && <p><b>Status:</b> {message}</p>}
-
-      <ResultsTable results={results} onEdit={startEdit} onDelete={deleteResult} />
-      <div style={{ marginTop: 10, padding: 10, border: "1px solid #ddd" }}>
-        <b>Results Filters</b>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-          <select name="athleteId" value={resultsFilters.athleteId} onChange={onResultsFilterChange}>
-            <option value="">All athletes</option>
-            {athletes.map((a) => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
-          </select>
-          <select name="eventId" value={resultsFilters.eventId} onChange={onResultsFilterChange}>
-            <option value="">All events</option>
-            {events.map((ev) => (
-              <option key={ev.id} value={ev.id}>{ev.name}</option>
-            ))}
-          </select>
-          <input
-            name="year"
-            placeholder="Year"
-            value={resultsFilters.year}
-            onChange={onResultsFilterChange}
-            style={{ width: 90 }}
-          />
-          <select name="sourceType" value={resultsFilters.sourceType} onChange={onResultsFilterChange}>
-            {sourceTypeOptions.map((s) => (
-              <option key={s || "all"} value={s}>{s || "All sources"}</option>
-            ))}
-          </select>
-          <select name="sortBy" value={resultsFilters.sortBy} onChange={onResultsFilterChange}>
-            {resultSortOptions.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
-          <select name="sortDir" value={resultsFilters.sortDir} onChange={onResultsFilterChange}>
-            <option value="desc">Desc</option>
-            <option value="asc">Asc</option>
-          </select>
-          <button onClick={applyResultsFilters}>Apply</button>
-        </div>
-      </div>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-        <button
-          onClick={() => loadResults(resultsPage - 1, resultsFilters)}
-          disabled={resultsPage <= 1}
-        >
-          Previous
-        </button>
-        <span>
-          Page {resultsPage} of {Math.max(1, Math.ceil(resultsTotalCount / resultsPageSize))}
-        </span>
-        <button
-          onClick={() => loadResults(resultsPage + 1, resultsFilters)}
-          disabled={resultsPage >= Math.ceil(resultsTotalCount / resultsPageSize)}
-        >
-          Next
-        </button>
-        <span style={{ color: "#555" }}>Total results: {resultsTotalCount}</span>
-      </div>
-
-      <HytekImportSection
-        onImportSuccess={async () => {
-          await loadLookups();
-          await loadResults(1, resultsFilters);
-        }}
-      />
-
-      <div style={{ marginTop: 24 }}>
-        <h2>Rankings</h2>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <select
-            value={selectedRankingEventId}
-            onChange={(e) => setSelectedRankingEventId(e.target.value)}
-          >
-            <option value="" disabled>
-              Select event
-            </option>
-            {events.map((ev) => (
-              <option key={ev.id} value={ev.id}>
-                {ev.name}
-              </option>
-            ))}
-          </select>
-          <button onClick={loadRankings}>Load Rankings</button>
-        </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10 }}>
-          <select
-            value={selectedRankingGender}
-            onChange={(e) => setSelectedRankingGender(e.target.value)}
-          >
-            {rankingGenders.map((g) => (
-              <option key={g} value={g}>
-                {g}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={selectedRankingCategory}
-            onChange={(e) => setSelectedRankingCategory(e.target.value)}
-          >
-            {rankingCategories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          <select
-            value={selectedRankingYear}
-            onChange={(e) => setSelectedRankingYear(e.target.value)}
-          >
-            {rankingYears.map((yearValue) => (
-              <option key={yearValue || "all"} value={yearValue}>
-                {yearValue || "All years"}
-              </option>
-            ))}
-          </select>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <div className="app-shell">
+      <h1>Grenada Track &amp; Field Rankings</h1>
+      <p className="app-subtitle">Manual result entry, imports, and rankings</p>
+      <nav className="top-nav">
+        <NavLink to="/rankings" className={({ isActive }) => `top-nav-link${isActive ? " active" : ""}`}>
+          Rankings
+        </NavLink>
+        {isAdmin && (
+          <>
+            <NavLink to="/manual-entry" className={({ isActive }) => `top-nav-link${isActive ? " active" : ""}`}>
+              Manual Entry
+            </NavLink>
+            <NavLink to="/results" className={({ isActive }) => `top-nav-link${isActive ? " active" : ""}`}>
+              Results
+            </NavLink>
+          </>
+        )}
+      </nav>
+      <div className="card">
+        {isAdmin ? (
+          <div className="row-wrap">
+            <b>Admin mode enabled</b>
+            <button type="button" onClick={handleAdminLogout}>Log out</button>
+          </div>
+        ) : (
+          <form onSubmit={handleAdminLogin} className="row-wrap">
             <input
-              type="checkbox"
-              checked={bestPerAthleteOnly}
-              onChange={(e) => setBestPerAthleteOnly(e.target.checked)}
+              type="password"
+              value={adminKeyInput}
+              onChange={(e) => setAdminKeyInput(e.target.value)}
+              placeholder="Admin key"
+              autoComplete="current-password"
+              required
             />
-            Best per athlete only
-          </label>
-        </div>
+            <button type="submit">Admin login</button>
+            <span className="muted-text">Only Rankings is public without login.</span>
+          </form>
+        )}
       </div>
 
-      {rankingsLoading && <p>Loading rankings...</p>}
-      <RankingsTable rankingsData={rankingsData} />
-      <MissingDobFixer athletes={missingDobAthletes} onSaveDob={fixAthleteDob} />
+      <Routes>
+        <Route path="/" element={<Navigate to="/rankings" replace />} />
+        <Route
+          path="/manual-entry"
+          element={isAdmin ? (
+            <>
+              <LookupForms
+                seedData={seedData}
+                athletes={athletes}
+                meets={meets}
+                events={events}
+                form={form}
+                onChange={onChange}
+                onCreateAthlete={addAthlete}
+                onCreateMeet={addMeet}
+                onCreateEvent={addEvent}
+              />
+              <ResultForm
+                form={form}
+                onChange={onChange}
+                onSubmit={submitResult}
+                loading={loading}
+                editingId={editingId}
+                onCancelEdit={resetForm}
+              />
+              {message && <p className="status-message"><b>Status:</b> {message}</p>}
+              <HytekImportSection
+                onImportSuccess={async () => {
+                  await loadLookups();
+                  await loadResults(1, resultsFilters);
+                }}
+              />
+            </>
+          ) : <Navigate to="/rankings" replace />}
+        />
+        <Route
+          path="/results"
+          element={isAdmin ? (
+            <>
+              {message && <p className="status-message"><b>Status:</b> {message}</p>}
+              <ResultsTable results={results} onEdit={startEdit} onDelete={deleteResult} />
+              <div className="card">
+                <b>Results Filters</b>
+                <div className="row-wrap">
+                  <select name="athleteId" value={resultsFilters.athleteId} onChange={onResultsFilterChange}>
+                    <option value="">All athletes</option>
+                    {athletes.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                  <select name="eventId" value={resultsFilters.eventId} onChange={onResultsFilterChange}>
+                    <option value="">All events</option>
+                    {events.map((ev) => (
+                      <option key={ev.id} value={ev.id}>{ev.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    name="year"
+                    placeholder="Year"
+                    value={resultsFilters.year}
+                    onChange={onResultsFilterChange}
+                    className="year-input"
+                  />
+                  <select name="sourceType" value={resultsFilters.sourceType} onChange={onResultsFilterChange}>
+                    {sourceTypeOptions.map((s) => (
+                      <option key={s || "all"} value={s}>{s || "All sources"}</option>
+                    ))}
+                  </select>
+                  <select name="sortBy" value={resultsFilters.sortBy} onChange={onResultsFilterChange}>
+                    {resultSortOptions.map((s) => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
+                    ))}
+                  </select>
+                  <select name="sortDir" value={resultsFilters.sortDir} onChange={onResultsFilterChange}>
+                    <option value="desc">Desc</option>
+                    <option value="asc">Asc</option>
+                  </select>
+                  <button onClick={applyResultsFilters}>Apply</button>
+                </div>
+              </div>
+              <div className="pagination-row">
+                <button
+                  onClick={() => loadResults(resultsPage - 1, resultsFilters)}
+                  disabled={resultsPage <= 1}
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {resultsPage} of {Math.max(1, Math.ceil(resultsTotalCount / resultsPageSize))}
+                </span>
+                <button
+                  onClick={() => loadResults(resultsPage + 1, resultsFilters)}
+                  disabled={resultsPage >= Math.ceil(resultsTotalCount / resultsPageSize)}
+                >
+                  Next
+                </button>
+                <span className="muted-text">Total results: {resultsTotalCount}</span>
+              </div>
+            </>
+          ) : <Navigate to="/rankings" replace />}
+        />
+        <Route
+          path="/rankings"
+          element={
+            <>
+              <div className="section">
+                <h2>Rankings</h2>
+                <div className="row-wrap">
+                  <select
+                    value={selectedRankingEventId}
+                    onChange={(e) => setSelectedRankingEventId(e.target.value)}
+                  >
+                    <option value="" disabled>
+                      Select event
+                    </option>
+                    {events.map((ev) => (
+                      <option key={ev.id} value={ev.id}>
+                        {ev.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button onClick={loadRankings}>Load Rankings</button>
+                </div>
+                <div className="row-wrap">
+                  <select
+                    value={selectedRankingGender}
+                    onChange={(e) => setSelectedRankingGender(e.target.value)}
+                  >
+                    {rankingGenders.map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={selectedRankingCategory}
+                    onChange={(e) => setSelectedRankingCategory(e.target.value)}
+                  >
+                    {rankingCategories.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={selectedRankingYear}
+                    onChange={(e) => setSelectedRankingYear(e.target.value)}
+                  >
+                    {rankingYears.map((yearValue) => (
+                      <option key={yearValue || "all"} value={yearValue}>
+                        {yearValue || "All years"}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="inline-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={bestPerAthleteOnly}
+                      onChange={(e) => setBestPerAthleteOnly(e.target.checked)}
+                    />
+                    Best per athlete only
+                  </label>
+                </div>
+              </div>
+
+              {rankingsLoading && <p>Loading rankings...</p>}
+              {message && <p className="status-message"><b>Status:</b> {message}</p>}
+              <RankingsTable rankingsData={rankingsData} />
+              <MissingDobFixer athletes={missingDobAthletes} onSaveDob={fixAthleteDob} />
+            </>
+          }
+        />
+      </Routes>
     </div>
   );
 }

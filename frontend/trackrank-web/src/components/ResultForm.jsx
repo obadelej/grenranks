@@ -7,7 +7,7 @@ function ResultForm({
   onCancelEdit,
 }) {
   return (
-    <form onSubmit={onSubmit} style={{ display: "grid", gap: 10, marginBottom: 20 }}>
+    <form onSubmit={onSubmit} className="card form-grid">
       <input
         name="performance"
         placeholder="Performance (e.g. 10.84)"
@@ -23,7 +23,7 @@ function ResultForm({
       />
       <input type="date" name="resultDate" value={form.resultDate} onChange={onChange} required />
 
-      <div style={{ display: "flex", gap: 10 }}>
+      <div className="row-wrap">
         <button type="submit" disabled={loading}>
           {loading ? "Saving..." : editingId === null ? "Save Result" : "Update Result"}
         </button>

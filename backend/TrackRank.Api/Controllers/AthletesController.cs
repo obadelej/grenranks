@@ -43,7 +43,9 @@ public class AthletesController : ControllerBase
             if (normalizedGender is null)
                 return BadRequest("Invalid gender. Use Male/Female or M/F.");
 
-            query = query.Where(r => NormalizeGender(r.Athlete.Gender) == normalizedGender);
+            query = normalizedGender == "male"
+                ? query.Where(r => r.Athlete.Gender == "Male" || r.Athlete.Gender == "M")
+                : query.Where(r => r.Athlete.Gender == "Female" || r.Athlete.Gender == "F");
         }
 
         var athletes = await query

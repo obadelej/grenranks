@@ -1,4 +1,18 @@
 const API_BASE = "http://localhost:5002";
+const ADMIN_KEY_STORAGE_KEY = "trackrank_admin_key";
+
+let adminApiKey = "";
+if (typeof window !== "undefined") {
+  adminApiKey = window.localStorage.getItem(ADMIN_KEY_STORAGE_KEY) || "";
+}
+
+function withAdminHeaders(headers = {}) {
+  if (!adminApiKey) return headers;
+  return {
+    ...headers,
+    "X-Admin-Key": adminApiKey,
+  };
+}
 
 async function parseResponse(response, fallbackMessage) {
   if (!response.ok) {
@@ -54,24 +68,57 @@ export async function fetchResults({
 }
 
 export async function seedData() {
-  const response = await fetch(`${API_BASE}/api/seed`, { method: "POST" });
+  const response = await fetch(`${API_BASE}/api/seed`, {
+    method: "POST",
+    headers: withAdminHeaders(),
+  });
   await parseResponse(response, "Seed failed");
 }
 
 export async function createResult(payload) {
   const response = await fetch(`${API_BASE}/api/results`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: withAdminHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
   await parseResponse(response, "Create failed");
   return response.json();
 }
 
+export async function createAthlete(payload) {
+  const response = await fetch(`${API_BASE}/api/athletes`, {
+    method: "POST",
+    headers: withAdminHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  await parseResponse(response, "Create athlete failed");
+  return response.json();
+}
+
+export async function createMeet(payload) {
+  const response = await fetch(`${API_BASE}/api/meets`, {
+    method: "POST",
+    headers: withAdminHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  await parseResponse(response, "Create meet failed");
+  return response.json();
+}
+
+export async function createEvent(payload) {
+  const response = await fetch(`${API_BASE}/api/events`, {
+    method: "POST",
+    headers: withAdminHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  await parseResponse(response, "Create event failed");
+  return response.json();
+}
+
 export async function updateResult(id, payload) {
   const response = await fetch(`${API_BASE}/api/results/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: withAdminHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
   await parseResponse(response, "Update failed");
@@ -81,6 +128,7 @@ export async function updateResult(id, payload) {
 export async function deleteResult(id) {
   const response = await fetch(`${API_BASE}/api/results/${id}`, {
     method: "DELETE",
+    headers: withAdminHeaders(),
   });
   await parseResponse(response, "Delete failed");
 }
@@ -119,7 +167,7 @@ export async function fetchMissingDobAthletes({ eventId, gender }) {
 export async function updateAthleteDob(id, dateOfBirth) {
   const response = await fetch(`${API_BASE}/api/athletes/${id}/date-of-birth`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: withAdminHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ dateOfBirth: new Date(dateOfBirth).toISOString() }),
   });
   await parseResponse(response, "Failed to update athlete DOB");
@@ -143,8 +191,35 @@ export async function importHytekCsv(file) {
   formData.append("File", file);
   const response = await fetch(`${API_BASE}/api/imports/hytek`, {
     method: "POST",
+    headers: withAdminHeaders(),
     body: formData,
   });
   await parseResponse(response, "Hy-Tek import failed");
   return response.json();
+}
+
+export async function loginAsAdmin(apiKey) {
+  const response = await fetch(`${API_BASE}/api/auth/admin-login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ apiKey }),
+  });
+  await parseResponse(response, "Admin login failed");
+  const data = await response.json();
+  adminApiKey = apiKey;
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(ADMIN_KEY_STORAGE_KEY, apiKey);
+  }
+  return data;
+}
+
+export function logoutAdmin() {
+  adminApiKey = "";
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(ADMIN_KEY_STORAGE_KEY);
+  }
+}
+
+export function getStoredAdminKey() {
+  return adminApiKey;
 }

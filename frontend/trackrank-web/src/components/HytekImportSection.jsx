@@ -86,49 +86,45 @@ export default function HytekImportSection({ onImportSuccess }) {
   }
 
   return (
-    <section style={{ marginTop: 28, paddingTop: 16, borderTop: "1px solid #ccc" }}>
+    <section className="card section">
       <h2>Hy-Tek import</h2>
-      <p style={{ color: "#444", fontSize: 14 }}>
+      <p className="muted-text">
         Upload a Meet Manager export (.csv). Recent runs are listed below; use Refresh to reload after importing from Swagger or here.
       </p>
 
-      <form ref={formRef} onSubmit={onSubmit} style={{ marginBottom: 16 }}>
+      <form ref={formRef} onSubmit={onSubmit} className="row-wrap section">
         <input
           type="file"
           accept=".csv"
           onChange={(ev) => setFile(ev.target.files?.[0] ?? null)}
           disabled={loading}
         />
-        <button type="submit" disabled={loading || !file} style={{ marginLeft: 8 }}>
+        <button type="submit" disabled={loading || !file}>
           {loading ? "Uploading…" : "Upload CSV"}
         </button>
         <button
           type="button"
           onClick={() => loadHistory(historyPage)}
           disabled={historyLoading}
-          style={{ marginLeft: 8 }}
         >
           {historyLoading ? "Loading…" : "Refresh history"}
         </button>
       </form>
 
       {message && (
-        <p style={{ marginBottom: 12 }}>
+        <p className="status-message">
           <b>Import / history:</b> {message}
         </p>
       )}
 
-      <h3 style={{ fontSize: 16 }}>Recent import runs</h3>
+      <h3 className="card-title">Recent import runs</h3>
       {history.length === 0 && !historyLoading ? (
-        <p style={{ color: "#666" }}>No imports recorded yet.</p>
+        <p className="muted-text">No imports recorded yet.</p>
       ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table
-            cellPadding={6}
-            style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}
-          >
+        <div className="table-wrap">
+          <table className="data-table">
             <thead>
-              <tr style={{ background: "#f0f0f0" }}>
+              <tr>
                 <th align="left">When (UTC)</th>
                 <th align="left">File</th>
                 <th align="right">Parsed</th>
@@ -141,7 +137,7 @@ export default function HytekImportSection({ onImportSuccess }) {
             </thead>
             <tbody>
               {history.map((row) => (
-                <tr key={row.id} style={{ borderBottom: "1px solid #eee" }}>
+                <tr key={row.id}>
                   <td>{formatUtc(row.importedAtUtc)}</td>
                   <td>{row.fileName}</td>
                   <td align="right">{row.parsedRows}</td>
@@ -156,7 +152,7 @@ export default function HytekImportSection({ onImportSuccess }) {
           </table>
         </div>
       )}
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+      <div className="pagination-row">
         <button
           type="button"
           onClick={() => loadHistory(historyPage - 1)}
@@ -174,7 +170,7 @@ export default function HytekImportSection({ onImportSuccess }) {
         >
           Next
         </button>
-        <span style={{ color: "#555" }}>Total imports: {historyTotalCount}</span>
+        <span className="muted-text">Total imports: {historyTotalCount}</span>
       </div>
     </section>
   );

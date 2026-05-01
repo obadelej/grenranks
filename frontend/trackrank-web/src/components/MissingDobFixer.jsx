@@ -22,11 +22,11 @@ function MissingDobFixer({ athletes, onSaveDob }) {
   }
 
   return (
-    <div style={{ marginTop: 12, border: "1px solid #d1d5db", padding: 12, borderRadius: 6 }}>
-      <h3 style={{ marginTop: 0 }}>Fix Missing Birthdates</h3>
+    <div className="card section">
+      <h3 className="card-title">Fix Missing Birthdates</h3>
       {athletes.map((a) => (
-        <div key={a.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-          <span style={{ minWidth: 220 }}>
+        <div key={a.id} className="row-wrap">
+          <span className="athlete-label">
             {a.firstName} {a.lastName} ({a.gender})
           </span>
           <input

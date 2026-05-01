@@ -2,10 +2,11 @@ import { toEventDisplayName } from "../utils/eventNames";
 
 function ResultsTable({ results, onEdit, onDelete }) {
   return (
-    <>
+    <section className="card">
       <h2>Results</h2>
-      <table border="1" cellPadding="8" style={{ borderCollapse: "collapse", width: "100%" }}>
-        <thead>
+      <div className="table-wrap">
+        <table className="data-table">
+          <thead>
           <tr>
             <th>ID</th>
             <th>Athlete</th>
@@ -16,35 +17,36 @@ function ResultsTable({ results, onEdit, onDelete }) {
             <th>Date</th>
             <th>Actions</th>
           </tr>
-        </thead>
-        <tbody>
-          {results.map((r) => (
-            <tr key={r.id}>
-              <td>{r.id}</td>
-              <td>{r.athleteName}</td>
-              <td>{r.meetName}</td>
-              <td>{r.eventDisplayName || toEventDisplayName(r.eventName)}</td>
-              <td>{r.performance}</td>
-              <td>{r.wind ?? "-"}</td>
-              <td>{new Date(r.resultDate).toLocaleDateString()}</td>
-              <td>
-                <button onClick={() => onEdit(r)} style={{ marginRight: 8 }}>
-                  Edit
-                </button>
-                <button onClick={() => onDelete(r.id)}>Delete</button>
-              </td>
-            </tr>
-          ))}
-          {results.length === 0 && (
-            <tr>
-              <td colSpan="8" style={{ textAlign: "center" }}>
-                No results yet.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </>
+          </thead>
+          <tbody>
+            {results.map((r) => (
+              <tr key={r.id}>
+                <td>{r.id}</td>
+                <td>{r.athleteName}</td>
+                <td>{r.meetName}</td>
+                <td>{r.eventDisplayName || toEventDisplayName(r.eventName)}</td>
+                <td>{r.performance}</td>
+                <td>{r.wind ?? "-"}</td>
+                <td>{new Date(r.resultDate).toLocaleDateString()}</td>
+                <td>
+                  <div className="row-wrap tight">
+                    <button onClick={() => onEdit(r)}>Edit</button>
+                    <button onClick={() => onDelete(r.id)}>Delete</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {results.length === 0 && (
+              <tr>
+                <td colSpan="8" className="table-empty">
+                  No results yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
