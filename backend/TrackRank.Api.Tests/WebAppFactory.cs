@@ -14,11 +14,17 @@ namespace TrackRank.Api.Tests;
 /// </summary>
 public class WebAppFactory : WebApplicationFactory<Program>
 {
+    private readonly string _environmentName;
     private readonly string _dbName = Guid.NewGuid().ToString("N");
+
+    public WebAppFactory(string environmentName = "Testing")
+    {
+        _environmentName = environmentName;
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseEnvironment("Testing");
+        builder.UseEnvironment(_environmentName);
 
         builder.ConfigureServices(services =>
         {

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using TrackRank.Api.Controllers.Dtos;
 using TrackRank.Api.Data;
 using TrackRank.Api.Models;
@@ -13,11 +14,13 @@ public class ImportsController : ControllerBase
 {
     private readonly IHytekCsvParser _hytekCsvParser;
     private readonly AppDbContext _db;
+    private readonly IHostEnvironment _env;
 
-    public ImportsController(IHytekCsvParser hytekCsvParser, AppDbContext db)
+    public ImportsController(IHytekCsvParser hytekCsvParser, AppDbContext db, IHostEnvironment env)
     {
         _hytekCsvParser = hytekCsvParser;
         _db = db;
+        _env = env;
     }
 
     [HttpPost("hytek")]
@@ -25,6 +28,9 @@ public class ImportsController : ControllerBase
     [RequestSizeLimit(20_000_000)]
     public async Task<IActionResult> ImportHytek([FromForm] ImportHytekFileRequest request, CancellationToken cancellationToken)
     {
+        if (!IsDevelopmentOrTestingEnvironment())
+            return StatusCode(403, new { message = "Hy-Tek import is only available in Development (or Testing for automated tests)." });
+
         IFormFile? file = request.File;
 
         // Fallback for Swagger/form-data binding quirks.
@@ -250,4 +256,8 @@ public class ImportsController : ControllerBase
 
         return Ok(history);
     }
+
+    private bool IsDevelopmentOrTestingEnvironment() =>
+        _env.IsDevelopment() ||
+        string.Equals(_env.EnvironmentName, "Testing", StringComparison.OrdinalIgnoreCase);
 }
