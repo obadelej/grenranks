@@ -1,0 +1,207 @@
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using TrackRank.Api.Data;
+
+namespace TrackRank.Api.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class RankingsController : ControllerBase
+{
+    private readonly AppDbContext _db;
+
+    public RankingsController(AppDbContext db)
+    {
+        _db = db;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Get(
+        [FromQuery] int eventId,
+        [FromQuery] string gender,
+        [FromQuery] string category,
+        [FromQuery] int? year,
+        [FromQuery] bool bestPerAthleteOnly = false)
+    {
+        if (eventId <= 0)
+            return BadRequest("eventId is required.");
+        if (string.IsNullOrWhiteSpace(gender))
+            return BadRequest("gender is required.");
+        if (string.IsNullOrWhiteSpace(category))
+            return BadRequest("category is required.");
+
+        var eventInfo = await _db.Events
+            .Where(e => e.Id == eventId)
+            .Select(e => new { e.Id, e.Name, e.EventType })
+            .FirstOrDefaultAsync();
+
+        if (eventInfo is null)
+            return NotFound("Event not found.");
+
+        var baseResults = await _db.Results
+            .Where(r => r.EventId == eventId)
+            .Select(r => new
+            {
+                r.Id,
+                r.AthleteId,
+                AthleteName = r.Athlete.FirstName + " " + r.Athlete.LastName,
+                AthleteGender = r.Athlete.Gender,
+                DateOfBirth = r.Athlete.DateOfBirth,
+                r.MeetId,
+                MeetName = r.Meet.Name,
+                r.Performance,
+                r.Wind,
+                r.ResultDate
+            })
+            .ToListAsync();
+
+        var normalizedGender = NormalizeGender(gender);
+        if (normalizedGender is null)
+            return BadRequest("Invalid gender. Use Male/Female or M/F.");
+        var normalizedCategory = NormalizeCategory(category);
+        if (normalizedCategory is null)
+            return BadRequest("Invalid category. Use U7, U9, U11, U13, U15, U17, U20, or 20 Plus.");
+
+        var genderFiltered = baseResults
+            .Where(r => NormalizeGender(r.AthleteGender) == normalizedGender)
+            .ToList();
+
+        var missingDobCount = genderFiltered.Count(r => r.DateOfBirth is null);
+
+        var currentYear = DateTime.UtcNow.Year;
+        var referenceDate = new DateTime(currentYear, 12, 31);
+        var filtered = genderFiltered
+            .Where(r => IsInCategory(r.DateOfBirth, referenceDate, normalizedCategory))
+            .ToList();
+
+        if (year.HasValue)
+        {
+            filtered = filtered
+                .Where(r => r.ResultDate.Year == year.Value)
+                .ToList();
+        }
+
+        var normalizedType = eventInfo.EventType.ToLowerInvariant();
+        var isTrack = normalizedType == "track";
+
+        if (bestPerAthleteOnly)
+        {
+            filtered = filtered
+                .GroupBy(r => new { r.AthleteId, r.AthleteName, r.AthleteGender, r.DateOfBirth })
+                .Select(g => isTrack
+                    ? g.OrderBy(x => x.Performance).ThenBy(x => x.ResultDate).First()
+                    : g.OrderByDescending(x => x.Performance).ThenBy(x => x.ResultDate).First())
+                .ToList();
+        }
+
+        var ordered = isTrack
+            ? filtered.OrderBy(r => r.Performance).ThenBy(r => r.ResultDate).ToList()
+            : filtered.OrderByDescending(r => r.Performance).ThenBy(r => r.ResultDate).ToList();
+
+        var rankings = new List<object>();
+        var previousPerformance = (decimal?)null;
+        var currentRank = 0;
+
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var row = ordered[i];
+            if (previousPerformance is null || row.Performance != previousPerformance.Value)
+            {
+                currentRank = i + 1;
+                previousPerformance = row.Performance;
+            }
+
+            rankings.Add(new
+            {
+                Rank = currentRank,
+                row.Id,
+                row.AthleteId,
+                row.AthleteName,
+                row.MeetId,
+                row.MeetName,
+                row.Performance,
+                row.Wind,
+                row.ResultDate
+            });
+        }
+
+        return Ok(new
+        {
+            EventId = eventInfo.Id,
+            EventName = eventInfo.Name,
+            EventType = eventInfo.EventType,
+            Gender = gender,
+            Category = normalizedCategory,
+            Year = year,
+            BestPerAthleteOnly = bestPerAthleteOnly,
+            ReferenceDate = referenceDate,
+            MissingDobCount = missingDobCount,
+            Warning = missingDobCount > 0
+                ? $"{missingDobCount} athlete result(s) excluded because date of birth is missing."
+                : null,
+            Rankings = rankings
+        });
+    }
+
+    private static string? NormalizeCategory(string category)
+    {
+        var normalized = category.Trim().ToUpperInvariant();
+        return normalized switch
+        {
+            "U7" => "U7",
+            "U9" => "U9",
+            "U11" => "U11",
+            "U13" => "U13",
+            "U15" => "U15",
+            "U17" => "U17",
+            "U20" => "U20",
+            "20 PLUS" => "20 Plus",
+            "20PLUS" => "20 Plus",
+            _ => null
+        };
+    }
+
+    private static string? NormalizeGender(string? gender)
+    {
+        if (string.IsNullOrWhiteSpace(gender))
+            return null;
+
+        var normalized = gender.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "male" => "male",
+            "m" => "male",
+            "female" => "female",
+            "f" => "female",
+            _ => null
+        };
+    }
+
+    private static bool IsInCategory(DateTime? dateOfBirth, DateTime referenceDate, string category)
+    {
+        if (dateOfBirth is null)
+            return false;
+
+        var age = CalculateAge(dateOfBirth.Value, referenceDate);
+        return category switch
+        {
+            "U7" => age >= 0 && age <= 6,
+            "U9" => age is 7 or 8,
+            "U11" => age is 9 or 10,
+            "U13" => age is 11 or 12,
+            "U15" => age is 13 or 14,
+            "U17" => age is 15 or 16,
+            "U20" => age >= 17 && age <= 19,
+            "20 Plus" => age >= 20,
+            _ => false
+        };
+    }
+
+    private static int CalculateAge(DateTime dateOfBirth, DateTime onDate)
+    {
+        var age = onDate.Year - dateOfBirth.Year;
+        if (onDate.Date < dateOfBirth.Date.AddYears(age))
+            age--;
+        return age;
+    }
+}
