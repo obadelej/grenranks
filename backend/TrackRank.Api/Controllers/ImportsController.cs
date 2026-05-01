@@ -12,15 +12,18 @@ namespace TrackRank.Api.Controllers;
 [Route("api/[controller]")]
 public class ImportsController : ControllerBase
 {
+    private const string AdminHeaderName = "X-Admin-Key";
     private readonly IHytekCsvParser _hytekCsvParser;
     private readonly AppDbContext _db;
     private readonly IHostEnvironment _env;
+    private readonly IConfiguration _configuration;
 
-    public ImportsController(IHytekCsvParser hytekCsvParser, AppDbContext db, IHostEnvironment env)
+    public ImportsController(IHytekCsvParser hytekCsvParser, AppDbContext db, IHostEnvironment env, IConfiguration configuration)
     {
         _hytekCsvParser = hytekCsvParser;
         _db = db;
         _env = env;
+        _configuration = configuration;
     }
 
     [HttpPost("hytek")]
@@ -28,8 +31,8 @@ public class ImportsController : ControllerBase
     [RequestSizeLimit(20_000_000)]
     public async Task<IActionResult> ImportHytek([FromForm] ImportHytekFileRequest request, CancellationToken cancellationToken)
     {
-        if (!IsDevelopmentOrTestingEnvironment())
-            return StatusCode(403, new { message = "Hy-Tek import is only available in Development (or Testing for automated tests)." });
+        if (!IsAuthorizedAdminRequest())
+            return Unauthorized(new { message = $"Hy-Tek import requires a valid {AdminHeaderName} header outside Development/Testing." });
 
         IFormFile? file = request.File;
 
@@ -260,4 +263,19 @@ public class ImportsController : ControllerBase
     private bool IsDevelopmentOrTestingEnvironment() =>
         _env.IsDevelopment() ||
         string.Equals(_env.EnvironmentName, "Testing", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsAuthorizedAdminRequest()
+    {
+        if (IsDevelopmentOrTestingEnvironment())
+            return true;
+
+        var configuredKey = _configuration["Security:AdminApiKey"];
+        if (string.IsNullOrWhiteSpace(configuredKey))
+            return false;
+
+        if (!Request.Headers.TryGetValue(AdminHeaderName, out var provided))
+            return false;
+
+        return string.Equals(provided.ToString(), configuredKey, StringComparison.Ordinal);
+    }
 }

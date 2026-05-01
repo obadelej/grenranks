@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using TrackRank.Api.Data;
@@ -15,16 +16,28 @@ namespace TrackRank.Api.Tests;
 public class WebAppFactory : WebApplicationFactory<Program>
 {
     private readonly string _environmentName;
+    private readonly string? _adminApiKey;
     private readonly string _dbName = Guid.NewGuid().ToString("N");
 
-    public WebAppFactory(string environmentName = "Testing")
+    public WebAppFactory(string environmentName = "Testing", string? adminApiKey = null)
     {
         _environmentName = environmentName;
+        _adminApiKey = adminApiKey;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(_environmentName);
+        builder.ConfigureAppConfiguration((_, config) =>
+        {
+            if (!string.IsNullOrWhiteSpace(_adminApiKey))
+            {
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Security:AdminApiKey"] = _adminApiKey
+                });
+            }
+        });
 
         builder.ConfigureServices(services =>
         {

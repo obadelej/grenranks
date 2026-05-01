@@ -10,20 +10,23 @@ namespace TrackRank.Api.Controllers;
 [Route("api/[controller]")]
 public class SeedController : ControllerBase
 {
+    private const string AdminHeaderName = "X-Admin-Key";
     private readonly AppDbContext _db;
     private readonly IHostEnvironment _env;
+    private readonly IConfiguration _configuration;
 
-    public SeedController(AppDbContext db, IHostEnvironment env)
+    public SeedController(AppDbContext db, IHostEnvironment env, IConfiguration configuration)
     {
         _db = db;
         _env = env;
+        _configuration = configuration;
     }
 
     [HttpPost]
     public async Task<IActionResult> Seed()
     {
-        if (!IsDevelopmentOrTestingEnvironment())
-            return StatusCode(403, new { message = "Seed is only available in Development (or Testing for automated tests)." });
+        if (!IsAuthorizedAdminRequest())
+            return Unauthorized(new { message = $"Seed requires a valid {AdminHeaderName} header outside Development/Testing." });
 
         if (!await _db.Athletes.AnyAsync())
         {
@@ -39,4 +42,19 @@ public class SeedController : ControllerBase
     private bool IsDevelopmentOrTestingEnvironment() =>
         _env.IsDevelopment() ||
         string.Equals(_env.EnvironmentName, "Testing", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsAuthorizedAdminRequest()
+    {
+        if (IsDevelopmentOrTestingEnvironment())
+            return true;
+
+        var configuredKey = _configuration["Security:AdminApiKey"];
+        if (string.IsNullOrWhiteSpace(configuredKey))
+            return false;
+
+        if (!Request.Headers.TryGetValue(AdminHeaderName, out var provided))
+            return false;
+
+        return string.Equals(provided.ToString(), configuredKey, StringComparison.Ordinal);
+    }
 }
