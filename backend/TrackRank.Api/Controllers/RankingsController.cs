@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TrackRank.Api.Data;
@@ -56,6 +57,20 @@ public class RankingsController : ControllerBase
             })
             .ToListAsync();
 
+        var rows = baseResults
+            .Select(r => new WindRankingRow(
+                r.Id,
+                r.AthleteId,
+                r.AthleteName,
+                r.AthleteGender,
+                r.DateOfBirth,
+                r.MeetId,
+                r.MeetName,
+                r.Performance,
+                r.Wind,
+                r.ResultDate))
+            .ToList();
+
         var normalizedGender = NormalizeGender(gender);
         if (normalizedGender is null)
             return BadRequest("Invalid gender. Use Male/Female or M/F.");
@@ -63,7 +78,7 @@ public class RankingsController : ControllerBase
         if (normalizedCategory is null)
             return BadRequest("Invalid category. Use U7, U9, U11, U13, U15, U17, U20, or 20 Plus.");
 
-        var genderFiltered = baseResults
+        var genderFiltered = rows
             .Where(r => NormalizeGender(r.AthleteGender) == normalizedGender)
             .ToList();
 
@@ -84,23 +99,91 @@ public class RankingsController : ControllerBase
 
         var normalizedType = eventInfo.EventType.ToLowerInvariant();
         var isTrack = normalizedType == "track";
+        var windSplit = UsesWindSplitRankings(eventInfo.Name, eventInfo.EventType);
 
-        if (bestPerAthleteOnly)
+        if (windSplit)
         {
-            filtered = filtered
-                .GroupBy(r => new { r.AthleteId, r.AthleteName, r.AthleteGender, r.DateOfBirth })
-                .Select(g => isTrack
-                    ? g.OrderBy(x => x.Performance).ThenBy(x => x.ResultDate).First()
-                    : g.OrderByDescending(x => x.Performance).ThenBy(x => x.ResultDate).First())
-                .ToList();
+            var legalWind = filtered.Where(r => r.Wind.HasValue && r.Wind.Value <= 2.0m).ToList();
+            var noWindOrIllegal = filtered.Where(r => !r.Wind.HasValue || r.Wind.Value > 2.0m).ToList();
+
+            if (bestPerAthleteOnly)
+            {
+                legalWind = ApplyBestPerAthlete(legalWind, isTrack);
+                noWindOrIllegal = ApplyBestPerAthlete(noWindOrIllegal, isTrack);
+            }
+
+            var rankingsLegalWind = BuildRankings(legalWind, isTrack);
+            var rankingsNoWindOrIllegalWind = BuildRankings(noWindOrIllegal, isTrack);
+
+            return Ok(new
+            {
+                EventId = eventInfo.Id,
+                EventName = eventInfo.Name,
+                EventDisplayName = EventNameFormatter.ToDisplayName(eventInfo.Name),
+                EventType = eventInfo.EventType,
+                Gender = gender,
+                Category = normalizedCategory,
+                Year = year,
+                BestPerAthleteOnly = bestPerAthleteOnly,
+                ReferenceDate = referenceDate,
+                MissingDobCount = missingDobCount,
+                WindSplitRankings = true,
+                WindSplitNote =
+                    "Legal wind: wind reading present and ≤ +2.0 m/s. Other list: no wind reading or wind > +2.0 m/s.",
+                Warning = missingDobCount > 0
+                    ? $"{missingDobCount} athlete result(s) excluded because date of birth is missing."
+                    : null,
+                Rankings = Array.Empty<object>(),
+                RankingsLegalWind = rankingsLegalWind,
+                RankingsNoWindOrIllegalWind = rankingsNoWindOrIllegalWind
+            });
         }
 
+        if (bestPerAthleteOnly)
+            filtered = ApplyBestPerAthlete(filtered, isTrack);
+
+        var rankings = BuildRankings(filtered, isTrack);
+
+        return Ok(new
+        {
+            EventId = eventInfo.Id,
+            EventName = eventInfo.Name,
+            EventDisplayName = EventNameFormatter.ToDisplayName(eventInfo.Name),
+            EventType = eventInfo.EventType,
+            Gender = gender,
+            Category = normalizedCategory,
+            Year = year,
+            BestPerAthleteOnly = bestPerAthleteOnly,
+            ReferenceDate = referenceDate,
+            MissingDobCount = missingDobCount,
+            WindSplitRankings = false,
+            Warning = missingDobCount > 0
+                ? $"{missingDobCount} athlete result(s) excluded because date of birth is missing."
+                : null,
+            Rankings = rankings
+        });
+    }
+
+    private static List<WindRankingRow> ApplyBestPerAthlete(
+        List<WindRankingRow> rows,
+        bool isTrack)
+    {
+        return rows
+            .GroupBy(r => new { r.AthleteId, r.AthleteName, r.AthleteGender, r.DateOfBirth })
+            .Select(g => isTrack
+                ? g.OrderBy(x => x.Performance).ThenBy(x => x.ResultDate).First()
+                : g.OrderByDescending(x => x.Performance).ThenBy(x => x.ResultDate).First())
+            .ToList();
+    }
+
+    private static List<object> BuildRankings(List<WindRankingRow> rows, bool isTrack)
+    {
         var ordered = isTrack
-            ? filtered.OrderBy(r => r.Performance).ThenBy(r => r.ResultDate).ToList()
-            : filtered.OrderByDescending(r => r.Performance).ThenBy(r => r.ResultDate).ToList();
+            ? rows.OrderBy(r => r.Performance).ThenBy(r => r.ResultDate).ToList()
+            : rows.OrderByDescending(r => r.Performance).ThenBy(r => r.ResultDate).ToList();
 
         var rankings = new List<object>();
-        var previousPerformance = (decimal?)null;
+        decimal? previousPerformance = null;
         var currentRank = 0;
 
         for (var i = 0; i < ordered.Count; i++)
@@ -126,24 +209,61 @@ public class RankingsController : ControllerBase
             });
         }
 
-        return Ok(new
-        {
-            EventId = eventInfo.Id,
-            EventName = eventInfo.Name,
-            EventDisplayName = EventNameFormatter.ToDisplayName(eventInfo.Name),
-            EventType = eventInfo.EventType,
-            Gender = gender,
-            Category = normalizedCategory,
-            Year = year,
-            BestPerAthleteOnly = bestPerAthleteOnly,
-            ReferenceDate = referenceDate,
-            MissingDobCount = missingDobCount,
-            Warning = missingDobCount > 0
-                ? $"{missingDobCount} athlete result(s) excluded because date of birth is missing."
-                : null,
-            Rankings = rankings
-        });
+        return rankings;
     }
+
+    private static bool UsesWindSplitRankings(string eventName, string eventType)
+    {
+        var display = EventNameFormatter.ToDisplayName(eventName).Trim();
+
+        if (string.Equals(display, "Long Jump", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (string.Equals(display, "Triple Jump", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (string.Equals(display, "100m Hurdles", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (string.Equals(display, "110m Hurdles", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!string.Equals(eventType, "Track", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var raw = eventName.Trim();
+        if (IsRelayEventName(raw) || IsRelayEventName(display))
+            return false;
+
+        var meters = TryParseLeadingSprintMeters(raw) ?? TryParseLeadingSprintMeters(display);
+        return meters is > 0 and <= 200;
+    }
+
+    private static bool IsRelayEventName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+        if (name.Contains("relay", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return Regex.IsMatch(name, @"\d+\s*x\s*\d+", RegexOptions.IgnoreCase);
+    }
+
+    private static int? TryParseLeadingSprintMeters(string name)
+    {
+        var m = Regex.Match(name, @"^\s*(\d+)\s*m", RegexOptions.IgnoreCase);
+        if (!m.Success)
+            return null;
+        return int.TryParse(m.Groups[1].Value, out var v) ? v : null;
+    }
+
+    private sealed record WindRankingRow(
+        int Id,
+        int AthleteId,
+        string AthleteName,
+        string AthleteGender,
+        DateTime? DateOfBirth,
+        int MeetId,
+        string MeetName,
+        decimal Performance,
+        decimal? Wind,
+        DateTime ResultDate);
 
     private static string? NormalizeCategory(string category)
     {

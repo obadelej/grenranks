@@ -142,10 +142,13 @@ public class RankingsControllerTests
         var response = await controller.Get(fieldEvent.Id, "F", "U17", DateTime.UtcNow.Year, false);
         var json = ExtractJson(response);
 
-        var rankings = json.RootElement.GetProperty("Rankings").EnumerateArray().ToList();
-        Assert.Equal(2, rankings.Count);
-        Assert.Equal(5.45m, rankings[0].GetProperty("Performance").GetDecimal());
-        Assert.Equal(5.10m, rankings[1].GetProperty("Performance").GetDecimal());
+        Assert.True(json.RootElement.GetProperty("WindSplitRankings").GetBoolean());
+        var legal = json.RootElement.GetProperty("RankingsLegalWind").EnumerateArray().ToList();
+        var other = json.RootElement.GetProperty("RankingsNoWindOrIllegalWind").EnumerateArray().ToList();
+        Assert.Empty(legal);
+        Assert.Equal(2, other.Count);
+        Assert.Equal(5.45m, other[0].GetProperty("Performance").GetDecimal());
+        Assert.Equal(5.10m, other[1].GetProperty("Performance").GetDecimal());
     }
 
     [Fact]
@@ -238,7 +241,39 @@ public class RankingsControllerTests
         };
     }
 
-    private static Result BuildResult(Athlete athlete, Meet meet, Event eventItem, decimal performance, DateTime resultDate)
+    [Fact]
+    public async Task Get_100m_WindSplit_SeparatesLegalAndNoWindOrIllegal()
+    {
+        await using var db = CreateDbContext();
+        var trackEvent = new Event { Name = "100m", EventType = "Track" };
+        var meet = new Meet { Name = "Championship", Location = "Stadium", MeetDate = DateTime.UtcNow.Date };
+        var athleteA = BuildAthlete("A", "Sprinter", "Male", yearsOldAtDec31: 18);
+        var athleteB = BuildAthlete("B", "Sprinter", "Male", yearsOldAtDec31: 18);
+        var athleteC = BuildAthlete("C", "Sprinter", "Male", yearsOldAtDec31: 18);
+        db.AddRange(trackEvent, meet, athleteA, athleteB, athleteC);
+        await db.SaveChangesAsync();
+
+        db.Results.AddRange(
+            BuildResult(athleteA, meet, trackEvent, 10.50m, DateTime.UtcNow.Date, wind: 1.0m),
+            BuildResult(athleteB, meet, trackEvent, 10.30m, DateTime.UtcNow.Date, wind: null),
+            BuildResult(athleteC, meet, trackEvent, 10.20m, DateTime.UtcNow.Date, wind: 3.0m));
+        await db.SaveChangesAsync();
+
+        var controller = new RankingsController(db);
+        var response = await controller.Get(trackEvent.Id, "Male", "U20", DateTime.UtcNow.Year, false);
+        var json = ExtractJson(response);
+
+        Assert.True(json.RootElement.GetProperty("WindSplitRankings").GetBoolean());
+        var legal = json.RootElement.GetProperty("RankingsLegalWind").EnumerateArray().ToList();
+        var other = json.RootElement.GetProperty("RankingsNoWindOrIllegalWind").EnumerateArray().ToList();
+        Assert.Single(legal);
+        Assert.Equal(10.50m, legal[0].GetProperty("Performance").GetDecimal());
+        Assert.Equal(2, other.Count);
+        Assert.Equal(10.20m, other[0].GetProperty("Performance").GetDecimal());
+        Assert.Equal(10.30m, other[1].GetProperty("Performance").GetDecimal());
+    }
+
+    private static Result BuildResult(Athlete athlete, Meet meet, Event eventItem, decimal performance, DateTime resultDate, decimal? wind = null)
     {
         return new Result
         {
@@ -249,6 +284,7 @@ public class RankingsControllerTests
             MeetId = meet.Id,
             EventId = eventItem.Id,
             Performance = performance,
+            Wind = wind,
             ResultDate = DateTime.SpecifyKind(resultDate, DateTimeKind.Utc),
             SourceType = "Test",
             CreatedAtUtc = DateTime.UtcNow
