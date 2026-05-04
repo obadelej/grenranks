@@ -246,15 +246,19 @@ public class RankingsController : ControllerBase
     }
 
     /// <summary>
-    /// Finds a sprint distance (1–200 m) from the event name, e.g. "100m", "Girls 100m", "100 M".
-    /// Does not treat longer distances like 1500m as sprints (value greater than 200).
+    /// Finds a sprint distance (1–200 m) from the event name, e.g. "100m", "Girls 100m", "100 M",
+    /// "100 Meters", "100 Metres". Does not treat longer distances like 1500m as sprints (value greater than 200).
     /// </summary>
     private static int? TryParseSprintDistanceMetersUpTo200(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
             return null;
 
-        foreach (Match m in Regex.Matches(name, @"\b(\d+)\s*m\b", RegexOptions.IgnoreCase))
+        const RegexOptions ro = RegexOptions.IgnoreCase;
+        foreach (Match m in Regex.Matches(
+                     name,
+                     @"\b(\d+)\s*(?:m\b|meters?\b|metres?\b)",
+                     ro))
         {
             if (!int.TryParse(m.Groups[1].Value, out var v) || v <= 0)
                 continue;
