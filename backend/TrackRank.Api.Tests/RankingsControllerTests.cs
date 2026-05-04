@@ -242,6 +242,28 @@ public class RankingsControllerTests
     }
 
     [Fact]
+    public async Task Get_PrefixedTrackName_100m_StillUsesWindSplit()
+    {
+        await using var db = CreateDbContext();
+        var trackEvent = new Event { Name = "Girls 100m", EventType = "Track" };
+        var meet = new Meet { Name = "Championship", Location = "Stadium", MeetDate = DateTime.UtcNow.Date };
+        var athlete = BuildAthlete("A", "Sprinter", "Female", yearsOldAtDec31: 16);
+        db.AddRange(trackEvent, meet, athlete);
+        await db.SaveChangesAsync();
+
+        db.Results.Add(BuildResult(athlete, meet, trackEvent, 12.50m, DateTime.UtcNow.Date, wind: 3.0m));
+        await db.SaveChangesAsync();
+
+        var controller = new RankingsController(db);
+        var response = await controller.Get(trackEvent.Id, "Female", "U17", DateTime.UtcNow.Year, false);
+        var json = ExtractJson(response);
+
+        Assert.True(json.RootElement.GetProperty("WindSplitRankings").GetBoolean());
+        var other = json.RootElement.GetProperty("RankingsNoWindOrIllegalWind").EnumerateArray().ToList();
+        Assert.Single(other);
+    }
+
+    [Fact]
     public async Task Get_100m_WindSplit_SeparatesLegalAndNoWindOrIllegal()
     {
         await using var db = CreateDbContext();

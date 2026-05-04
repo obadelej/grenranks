@@ -2,6 +2,29 @@ import { toEventDisplayName } from "../utils/eventNames";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
+function pick(obj, ...keys) {
+  if (!obj) return undefined;
+  for (const k of keys) {
+    if (Object.prototype.hasOwnProperty.call(obj, k) && obj[k] !== undefined) {
+      return obj[k];
+    }
+  }
+  return undefined;
+}
+
+function normalizeRankingRows(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((r) => ({
+    id: pick(r, "id", "Id"),
+    rank: pick(r, "rank", "Rank"),
+    athleteName: pick(r, "athleteName", "AthleteName"),
+    performance: pick(r, "performance", "Performance"),
+    wind: pick(r, "wind", "Wind"),
+    resultDate: pick(r, "resultDate", "ResultDate"),
+    meetName: pick(r, "meetName", "MeetName"),
+  }));
+}
+
 function formatWind(wind) {
   if (wind === null || wind === undefined) return "-";
   const numeric = Number(wind);
@@ -52,11 +75,33 @@ function RankingsTable({ rankingsData }) {
     return null;
   }
 
-  const eventDisplayName = rankingsData.eventDisplayName || toEventDisplayName(rankingsData.eventName);
-  const windSplit = Boolean(rankingsData.windSplitRankings);
-  const rowsLegal = rankingsData.rankingsLegalWind ?? [];
-  const rowsOther = rankingsData.rankingsNoWindOrIllegalWind ?? [];
-  const rowsSingle = rankingsData.rankings ?? [];
+  const eventDisplayName =
+    pick(rankingsData, "eventDisplayName", "EventDisplayName") ||
+    toEventDisplayName(pick(rankingsData, "eventName", "EventName"));
+  const windSplit = Boolean(
+    pick(rankingsData, "windSplitRankings", "WindSplitRankings"),
+  );
+  const rowsLegal = normalizeRankingRows(
+    pick(rankingsData, "rankingsLegalWind", "RankingsLegalWind") ?? [],
+  );
+  const rowsOther = normalizeRankingRows(
+    pick(rankingsData, "rankingsNoWindOrIllegalWind", "RankingsNoWindOrIllegalWind") ?? [],
+  );
+  const rowsSingle = normalizeRankingRows(
+    pick(rankingsData, "rankings", "Rankings") ?? [],
+  );
+  const windSplitNote =
+    pick(rankingsData, "windSplitNote", "WindSplitNote") ?? null;
+  const warning = pick(rankingsData, "warning", "Warning");
+  const gender = pick(rankingsData, "gender", "Gender");
+  const category = pick(rankingsData, "category", "Category");
+  const year = pick(rankingsData, "year", "Year");
+  const bestPerAthleteOnly = pick(
+    rankingsData,
+    "bestPerAthleteOnly",
+    "BestPerAthleteOnly",
+  );
+  const eventType = pick(rankingsData, "eventType", "EventType");
 
   function downloadPdf() {
     const doc = new jsPDF({
@@ -69,18 +114,18 @@ function RankingsTable({ rankingsData }) {
     doc.setFontSize(14);
     doc.text(title, 40, 40);
     doc.setFontSize(10);
-    doc.text(`Filter: ${rankingsData.gender} / ${rankingsData.category}`, 40, 58);
+    doc.text(`Filter: ${gender} / ${category}`, 40, 58);
     doc.text(
-      `Season: ${rankingsData.year ?? "All"} / Mode: ${rankingsData.bestPerAthleteOnly ? "Best per athlete" : "All results"}`,
+      `Season: ${year ?? "All"} / Mode: ${bestPerAthleteOnly ? "Best per athlete" : "All results"}`,
       40,
       74,
     );
     doc.text(`Generated: ${new Date().toLocaleString()}`, 40, 90);
-    if (windSplit && rankingsData.windSplitNote) {
-      doc.text(String(rankingsData.windSplitNote), 40, 106, { maxWidth: 720 });
+    if (windSplit && windSplitNote) {
+      doc.text(String(windSplitNote), 40, 106, { maxWidth: 720 });
     }
 
-    let y = windSplit && rankingsData.windSplitNote ? 128 : 105;
+    let y = windSplit && windSplitNote ? 128 : 105;
     const tableBody = (rows) =>
       (rows ?? []).map((r) => [
         r.rank ?? "",
@@ -127,9 +172,9 @@ function RankingsTable({ rankingsData }) {
     }
 
     const safeEventName = String(eventDisplayName).replace(/[^a-z0-9_-]+/gi, "-");
-    const safeCategory = String(rankingsData.category).replace(/[^a-z0-9_-]+/gi, "-");
-    const safeGender = String(rankingsData.gender).replace(/[^a-z0-9_-]+/gi, "-");
-    const safeYear = String(rankingsData.year ?? "all");
+    const safeCategory = String(category).replace(/[^a-z0-9_-]+/gi, "-");
+    const safeGender = String(gender).replace(/[^a-z0-9_-]+/gi, "-");
+    const safeYear = String(year ?? "all");
     const suffix = windSplit ? "-wind-split" : "";
     doc.save(`rankings-${safeEventName}-${safeGender}-${safeCategory}-${safeYear}${suffix}.pdf`);
   }
@@ -137,18 +182,18 @@ function RankingsTable({ rankingsData }) {
   return (
     <section className="card section">
       <h2>
-        Rankings - {eventDisplayName} ({rankingsData.eventType})
+        Rankings - {eventDisplayName} ({eventType})
       </h2>
       <p>
-        Filter: {rankingsData.gender} / {rankingsData.category}
+        Filter: {gender} / {category}
       </p>
       <p>
-        Season: {rankingsData.year ?? "All"} / Mode:{" "}
-        {rankingsData.bestPerAthleteOnly ? "Best per athlete" : "All results"}
+        Season: {year ?? "All"} / Mode:{" "}
+        {bestPerAthleteOnly ? "Best per athlete" : "All results"}
       </p>
-      {windSplit && rankingsData.windSplitNote && (
+      {windSplit && windSplitNote && (
         <p className="muted-text" style={{ marginTop: "0.35rem" }}>
-          {rankingsData.windSplitNote}
+          {windSplitNote}
         </p>
       )}
       <div className="row-wrap">
@@ -156,9 +201,9 @@ function RankingsTable({ rankingsData }) {
           Save Rankings as PDF
         </button>
       </div>
-      {rankingsData.warning && (
+      {warning && (
         <p className="warning-text">
-          {rankingsData.warning}
+          {warning}
         </p>
       )}
 

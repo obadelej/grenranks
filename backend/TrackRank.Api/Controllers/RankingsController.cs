@@ -232,7 +232,7 @@ public class RankingsController : ControllerBase
         if (IsRelayEventName(raw) || IsRelayEventName(display))
             return false;
 
-        var meters = TryParseLeadingSprintMeters(raw) ?? TryParseLeadingSprintMeters(display);
+        var meters = TryParseSprintDistanceMetersUpTo200(raw) ?? TryParseSprintDistanceMetersUpTo200(display);
         return meters is > 0 and <= 200;
     }
 
@@ -245,12 +245,24 @@ public class RankingsController : ControllerBase
         return Regex.IsMatch(name, @"\d+\s*x\s*\d+", RegexOptions.IgnoreCase);
     }
 
-    private static int? TryParseLeadingSprintMeters(string name)
+    /// <summary>
+    /// Finds a sprint distance (1–200 m) from the event name, e.g. "100m", "Girls 100m", "100 M".
+    /// Does not treat longer distances like 1500m as sprints (value greater than 200).
+    /// </summary>
+    private static int? TryParseSprintDistanceMetersUpTo200(string name)
     {
-        var m = Regex.Match(name, @"^\s*(\d+)\s*m", RegexOptions.IgnoreCase);
-        if (!m.Success)
+        if (string.IsNullOrWhiteSpace(name))
             return null;
-        return int.TryParse(m.Groups[1].Value, out var v) ? v : null;
+
+        foreach (Match m in Regex.Matches(name, @"\b(\d+)\s*m\b", RegexOptions.IgnoreCase))
+        {
+            if (!int.TryParse(m.Groups[1].Value, out var v) || v <= 0)
+                continue;
+            if (v <= 200)
+                return v;
+        }
+
+        return null;
     }
 
     private sealed record WindRankingRow(
